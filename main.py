@@ -2,7 +2,7 @@ from os.path import join
 import numpy as np
 import csv
 
-from skimage.filter import threshold_otsu, threshold_adaptive
+from skimage.filter import threshold_otsu
 import skimage.io as io
 from skimage.color import rgb2gray
 from skimage.morphology import label, closing, square
@@ -21,7 +21,7 @@ def cost(im, et):
 
 
 def get_d(image_file):
-    max_cost = 0.1
+    max_cost = 0.25
     max_area = 30
     
     image = rgb2gray(io.imread(image_file))
@@ -47,7 +47,7 @@ def get_d(image_file):
 
 io.use_plugin('pil')
 data_dir = 'data'
-info_file = 'info.csv'
+info_file = 'info.txt'
 train = []
 test = []
 
@@ -77,7 +77,7 @@ with open(info_file, 'rb') as f:
 print 'Classifing...'
 
 for d in test:
-    min_cost = 10000
+    min_cost = 100
     min_t = None
     for t in train:
         sc = 0
@@ -96,3 +96,12 @@ for d in test:
     d['style'] = min_t['style']
     print d['file'], ':'
     print d['font'], ';', d['weight'], ';', d['style']
+
+print 'Printing results...'
+
+with open('result.txt', 'w') as f:
+    for t in train:
+	print t['file'], ';', t['font'], ';', t['weight'], ';', t['style']
+    for t in test:
+	print t['file'], ';', t['font'], ';', t['weight'], ';', t['style']
+    
