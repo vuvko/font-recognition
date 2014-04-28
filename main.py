@@ -1,54 +1,70 @@
 import numpy as np
 import csv
 import sys
+from time import clock
 
 import skimage.io as io
 from skimage.filter import threshold_otsu
 from skimage.color import rgb2gray
 from skimage.morphology import label
 from skimage.measure import regionprops
+from skimage.transform import AffineTransform, warp, resize
 
 
 def cost(im, et):
     '''
     Measure between image and etalon based on hamming distance
     '''
-    shape = min(im.shape[0], et.shape[0]), min(im.shape[1], et.shape[1])
-    out = ((im.shape[0] + et.shape[0] - 2 * shape[0]) * 
-        (im.shape[1] + et.shape[1] - 2 * shape[1]))
-    return (sum(sum(np.logical_xor(im[:shape[0], :shape[1]], 
-        et[:shape[0], :shape[1]]))) + out + 0.0) / (im.shape[0] * im.shape[1])
+    return ((sum(sum(np.logical_xor(im, et))) + 0.0) 
+        / (im.shape[0] * im.shape[1]))
 
 
-def get_d(image_file):
+def get_d(image):
     '''
     Extracting etalons from image
     '''
-    max_cost = 0.18
+    print 'Extracting...'
+    max_cost = 0.2
     max_et = 100
     max_area = 30
+    max_transform = 3
     
-    image = rgb2gray(io.imread(image_file))
+    image = rgb2gray(image)
     tresh = threshold_otsu(image)
-    bi = image < tresh
-    li = label(bi)
     dt = []
-    for region in regionprops(li, ['Area', 'BoundingBox']):
-        if region['Area'] < max_area:
-            continue
-        minr, minc, maxr, maxc = region['BoundingBox']
-        imr = bi[minr:maxr, minc:maxc]
-        h = False
-        for t in dt:
-            if cost(imr, t) < max_cost:
-                h = True
-                break
-        if h:
-            continue
+    
+    for it in xrange(max_transform):
+        bi = image < tresh
+        li = label(bi)
+        print it
+        for region in regionprops(li, ['Area', 'BoundingBox']):
+            if region['Area'] < max_area:
+                continue
+            minr, minc, maxr, maxc = region['BoundingBox']
+            imr = bi[minr:maxr, minc:maxc]
+            imr = resize(imr, (30, 30))
+            h = False
+            for t in dt:
+                if cost(imr, t) < max_cost:
+                    h = True
+                    break
+            if h:
+                continue
+            else:
+                dt.append(imr)
+            if len(dt) >= max_et:
+                return dt
+        if it % 2:
+            sx = 0.9 - (it + 0.0) / 10
+            sy = 1.0 + (it + 0.0) / 11
+            rt = 0.02 + (it + 0.0) * 0.01
         else:
-            dt.append(imr)
-        if len(dt) > max_et:
-            break
+            sx = 0.9 + (it + 0.0) / 10
+            sy = 1.0 - (it + 0.0) / 11
+            rt = -0.03 - (it + 0.0) * 0.015
+        tform = AffineTransform(scale=(sx, sy), rotation=rt)
+        image = warp(image, tform)
+        print len(dt)
     return dt
 
 
@@ -59,22 +75,25 @@ def load(info_file = 'info.txt'):
         fr = csv.reader(f, delimiter=';')
         for row in fr:
             print row[0]
+            start = clock()
             d = dict()
             if len(row) == 1:
                 d['file'] = row[0]
                 d['font'] = None
                 d['weight'] = None
                 d['style'] = None
-                d['data'] = get_d(row[0])
+                d['data'] = get_d(io.imread(row[0]))
                 test.append(d)
             else:
                 d['file'] = row[0]
                 d['font'] = row[1]
                 d['weight'] = row[2]
                 d['style'] = row[3]
-                d['data'] = get_d(row[0])
+                d['data'] = get_d(io.imread(row[0]))
                 train.append(d)
+            end = clock()
             print len(d['data'])
+            print end - start
     return train, test
 
 
@@ -82,6 +101,7 @@ def classify(train, test):
     for d in test:
         min_cost = 100
         min_t = None
+        start = clock()
         for t in train:
             sc = 0
             for im in d['data']:
@@ -94,11 +114,13 @@ def classify(train, test):
             if sc < min_cost:
                 min_cost = sc
                 min_t = t
+        end = clock()
         d['font'] = min_t['font']
         d['weight'] = min_t['weight']
         d['style'] = min_t['style']
         print d['file'], ':'
         print d['font'], ';', d['weight'], ';', d['style']
+        print end - start
     return test
 
 
